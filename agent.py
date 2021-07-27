@@ -2,7 +2,8 @@ import time
 import random
 import numpy as np
 from collections import deque
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 from matplotlib import pyplot as plt
 
 
@@ -37,6 +38,7 @@ class DQNAgent:
         self.a_true = tf.placeholder(dtype=tf.int32, shape=[None], name='actions')
         self.reward = tf.placeholder(dtype=tf.float32, shape=[], name='reward')
         self.input_float = tf.to_float(self.input) / 255.
+        
         # Online network
         with tf.variable_scope('online'):
             self.conv_1 = tf.layers.conv2d(inputs=self.input_float, filters=32, kernel_size=8, strides=4, activation=tf.nn.relu)
@@ -45,6 +47,7 @@ class DQNAgent:
             self.flatten = tf.layers.flatten(inputs=self.conv_3)
             self.dense = tf.layers.dense(inputs=self.flatten, units=512, activation=tf.nn.relu)
             self.output = tf.layers.dense(inputs=self.dense, units=self.actions, name='output')
+        
         # Target network
         with tf.variable_scope('target'):
             self.conv_1_target = tf.layers.conv2d(inputs=self.input_float, filters=32, kernel_size=8, strides=4, activation=tf.nn.relu)
@@ -53,11 +56,13 @@ class DQNAgent:
             self.flatten_target = tf.layers.flatten(inputs=self.conv_3_target)
             self.dense_target = tf.layers.dense(inputs=self.flatten_target, units=512, activation=tf.nn.relu)
             self.output_target = tf.stop_gradient(tf.layers.dense(inputs=self.dense_target, units=self.actions, name='output_target'))
+        
         # Optimizer
         self.action = tf.argmax(input=self.output, axis=1)
         self.q_pred = tf.gather_nd(params=self.output, indices=tf.stack([tf.range(tf.shape(self.a_true)[0]), self.a_true], axis=1))
         self.loss = tf.losses.huber_loss(labels=self.q_true, predictions=self.q_pred)
         self.train = tf.train.AdamOptimizer(learning_rate=0.00025).minimize(self.loss)
+        
         # Summaries
         self.summaries = tf.summary.merge([
             tf.summary.scalar('reward', self.reward),
@@ -106,16 +111,20 @@ class DQNAgent:
         # Sync target network
         if self.step % self.copy == 0:
             self.copy_model()
+        
         # Checkpoint model
         if self.step % self.save_each == 0:
             self.save_model()
+        
         # Break if burn-in
         if self.step < self.burnin:
             return
+        
         # Break if no training
         if self.learn_step < self.learn_each:
             self.learn_step += 1
             return
+        
         # Sample batch
         batch = random.sample(self.memory, self.batch_size)
         state, next_state, action, reward, done = map(np.array, zip(*batch))
@@ -128,6 +137,7 @@ class DQNAgent:
             target_q = reward + (1. - done) * self.gamma * next_q[np.arange(0, self.batch_size), a]
         else:
             target_q = reward + (1. - done) * self.gamma * np.amax(next_q, axis=1)
+        
         # Update model
         summary, _ = self.session.run(fetches=[self.summaries, self.train],
                                       feed_dict={self.input: state,
@@ -157,23 +167,23 @@ class DQNAgent:
                     time.sleep(0.05)
                     env.render()
                     # Plot
-                    if plot:
-                        if step % 100 == 0:
-                            self.visualize_layer(session=sess, layer=self.conv_2, state=state, step=step)
+                    if plot and step % 100 == 0:
+                        self.visualize_layer(session=sess, layer=self.conv_2, state=state, step=step)
+
                     # Action
                     if np.random.rand() < 0.0:
                         action = np.random.randint(low=0, high=self.actions, size=1)[0]
                     else:
                         q = sess.run(fetches=output, feed_dict={input: np.expand_dims(state, 0)})
                         action = np.argmax(q)
+                    
                     next_state, reward, done, info = env.step(action)
                     total_reward += reward
                     state = next_state
                     step += 1
-                    if info['flag_get']:
+                    if info['flag_get'] or done:
                         break
-                    if done:
-                        break
+
         env.close()
 
     def visualize_layer(self, session, layer, state, step):
@@ -184,7 +194,7 @@ class DQNAgent:
         n_columns = 8
         n_rows = np.ceil(filters / n_columns)
         for i in range(filters):
-            plt.subplot(n_rows, n_columns, i+1)
+            plt.subplot(n_rows, n_columns, i + 1)
             plt.title('Filter ' + str(i))
             plt.imshow(units[0, :, :, i], interpolation="nearest", cmap='YlGnBu')
         plt.savefig(fname='./img/img-' + str(step) + '.png')

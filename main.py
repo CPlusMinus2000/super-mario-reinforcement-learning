@@ -20,7 +20,7 @@ actions = env.action_space.n
 agent = DQNAgent(states=states, actions=actions, max_memory=100000, double_q=True)
 
 # Episodes
-episodes = 10000
+episodes = 10
 rewards = []
 
 # Timing
@@ -41,7 +41,7 @@ for e in range(episodes):
     while True:
 
         # Show env
-        # env.render()
+        env.render()
 
         # Run agent
         action = agent.run(state=state)
@@ -72,7 +72,7 @@ for e in range(episodes):
     rewards.append(total_reward / iter)
 
     # Print
-    if e % 100 == 0:
+    if e % 1 == 0:
         print('Episode {e} - '
               'Frame {f} - '
               'Frames/sec {fs} - '
